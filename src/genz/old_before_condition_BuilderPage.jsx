@@ -6,13 +6,10 @@ import {
 import {
   TIMEFRAMES, INDICATOR_TYPES, PRICE_FIELDS, INSTRUMENTS, EXPIRY_TYPES, PATTERNS
 } from "./theme";
-import { Field, Select, Toggle, IconBtn, Sheet } from "./ui";
-import {
-  uid, newPosition, newBlock, indicatorName, priceName, patternName, boxText,
-} from "./data";
-import ConditionBuilder from "./ConditionBuilder";
+import { Field, Select, Toggle, IconBtn, Expr, Sheet } from "./ui";
+import { uid, newPosition, newBlock, indicatorName, priceName, patternName } from "./data";
 
-/* ── add-sheets for Setup (display naming: "RSI (14, 5)") ── */
+/* ── add-sheets (display naming: "RSI (14, 5)") ─────────── */
 
 function IndicatorSheet({ t, onAdd, onClose }) {
   const [type, setType] = useState("RSI");
@@ -67,7 +64,7 @@ function PriceSheet({ t, onAdd, onClose }) {
   );
 }
 
-function PatternListSheet({ t, onAdd, onClose }) {
+function PatternSheet({ t, onAdd, onClose }) {
   const [tf, setTf] = useState("5m");
   return (
     <Sheet t={t} title="Add pattern scan" onClose={onClose}>
@@ -85,6 +82,44 @@ function PatternListSheet({ t, onAdd, onClose }) {
           );
         })}
       </div>
+    </Sheet>
+  );
+}
+
+function ConditionSheet({ t, title, value, tokens, onSave, onClose }) {
+  const [text, setText] = useState(value);
+  return (
+    <Sheet t={t} title={title} onClose={onClose}>
+      <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, 500))}
+        rows={5} placeholder="e.g. RSI (14, 5) > 60 AND Close (5) > EMA (20, 5)"
+        className={t.input + " text-sm resize-none"} />
+      <div className={"flex justify-between text-[11px] mt-1 " + t.muted}>
+        <span>Operators: AND OR &gt; &lt; &gt;= &lt;= + - * /</span>
+        <span>{text.length}/500</span>
+      </div>
+      {tokens.length > 0 && (
+        <>
+          <p className={"text-sm mt-3 mb-1.5 " + t.muted}>Tap to insert (defined in Setup):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {tokens.map((tok) => (
+              <button key={tok} onClick={() => setText((s) => (s ? s + " " + tok : tok))}
+                className={"px-2.5 py-1.5 text-xs " + t.token}>
+                {tok}
+              </button>
+            ))}
+            {["AND", "OR", ">", "<", ">=", "<="].map((op) => (
+              <button key={op} onClick={() => setText((s) => (s ? s + " " + op : op))}
+                className={"px-2.5 py-1.5 text-xs " + t.op}>
+                {op}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <button onClick={() => { onSave(text.trim()); onClose(); }}
+        className={"mt-4 w-full py-3 text-sm " + t.primaryBtn}>
+        Save condition
+      </button>
     </Sheet>
   );
 }
@@ -224,14 +259,11 @@ function PositionCard({ t, pos, onChange, onCopy, onDelete }) {
   );
 }
 
-/* ── block card (editable name + visual condition boxes) ── */
+/* ── block card ────────────────────────────────────────── */
 
 function BlockCard({ t, block, tokens, onChange, onCopy, onDelete }) {
-  const [editingName, setEditingName] = useState(false);
+  const [editing, setEditing] = useState(null);
   const set = (k, v) => onChange({ ...block, [k]: v });
-
-  const setBox = (key, box) =>
-    onChange({ ...block, [key + "Box"]: box, [key]: boxText(box) });
 
   const addPosition = () =>
     set("positions", [...block.positions, newPosition(block.positions.length + 1)]);
@@ -240,58 +272,46 @@ function BlockCard({ t, block, tokens, onChange, onCopy, onDelete }) {
 
   return (
     <div className={t.card + " overflow-hidden"}>
-      <div className="flex items-center gap-1.5 px-3 py-3">
-        <button onClick={() => set("open", !block.open)} className="p-0.5">
+      <div className="flex items-center gap-2 px-3 py-3">
+        <button onClick={() => set("open", !block.open)} className="flex items-center gap-2 flex-1 text-left">
           {block.open
             ? <ChevronDown size={17} className={t.linkAccent} />
             : <ChevronRight size={17} className={t.muted} />}
+          <span className="text-[15px] font-semibold">{block.name}</span>
+          <span className={"text-[11px] " + t.muted}>
+            {block.positions.length} pos · {block.entryTf}/{block.exitTf}
+          </span>
         </button>
-
-        {editingName ? (
-          <input autoFocus value={block.name}
-            onChange={(e) => set("name", e.target.value)}
-            onBlur={() => setEditingName(false)}
-            onKeyDown={(e) => e.key === "Enter" && setEditingName(false)}
-            className={t.input + " py-1 text-[15px] font-semibold flex-1 min-w-0"} />
-        ) : (
-          <>
-            <button onClick={() => set("open", !block.open)}
-              className="text-[15px] font-semibold text-left truncate">
-              {block.name}
-            </button>
-            <button onClick={() => setEditingName(true)}
-              className={"p-1 rounded-md " + t.muted + " hover:" + t.linkAccent}>
-              <Pencil size={13} />
-            </button>
-            <span className={"text-[11px] flex-1 " + t.muted}>
-              {block.positions.length} pos · {block.entryTf}/{block.exitTf}
-            </span>
-          </>
-        )}
-
         <IconBtn t={t} onClick={onCopy}><Copy size={14} /></IconBtn>
         <IconBtn t={t} danger onClick={onDelete}><X size={14} /></IconBtn>
       </div>
 
       {block.open && (
         <div className="p-3 pt-0 space-y-3">
-          {[["Entry condition", "entry"], ["Exit condition", "exit"]].map(([label, key]) => (
-            <div key={key} className={"p-3 " + t.innerCard}>
-              <div className="flex items-center justify-between mb-2">
-                <p className={t.sectionLabel}>{label}</p>
-                <div className={"flex items-center gap-1 text-[11px] " + t.muted}>
-                  <Clock size={11} /> checked every
-                  <select value={block[key + "Tf"]} onChange={(e) => set(key + "Tf", e.target.value)}
-                    className={"bg-transparent focus:outline-none font-semibold " + t.linkAccent}>
-                    {TIMEFRAMES.map((x) => <option key={x}>{x}</option>)}
-                  </select>
+          {[["Entry condition", "entry", "entryTf"], ["Exit condition", "exit", "exitTf"]].map(
+            ([label, condK, tfK]) => (
+              <div key={condK} className={"p-3 " + t.innerCard}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className={t.sectionLabel}>{label}</p>
+                  <div className="flex items-center gap-3">
+                    <div className={"flex items-center gap-1 text-[11px] " + t.muted}>
+                      <Clock size={11} />
+                      <select value={block[tfK]} onChange={(e) => set(tfK, e.target.value)}
+                        className={"bg-transparent focus:outline-none " + t.linkAccent}>
+                        {TIMEFRAMES.map((x) => <option key={x}>{x}</option>)}
+                      </select>
+                    </div>
+                    <button onClick={() => setEditing(condK)}
+                      className={"flex items-center gap-1 text-xs font-medium " + t.linkAccent}>
+                      <Pencil size={12} /> Edit
+                    </button>
+                  </div>
                 </div>
+                <Expr t={t} text={block[condK]} tokens={tokens} />
+                <p className={"text-right text-[11px] mt-1 " + t.muted}>{block[condK].length}/500</p>
               </div>
-              <ConditionBuilder t={t} tokens={tokens}
-                value={block[key + "Box"]}
-                onChange={(box) => setBox(key, box)} />
-            </div>
-          ))}
+            )
+          )}
 
           <div className="space-y-2">
             {block.positions.map((p) => (
@@ -308,11 +328,18 @@ function BlockCard({ t, block, tokens, onChange, onCopy, onDelete }) {
           </button>
         </div>
       )}
+
+      {editing && (
+        <ConditionSheet t={t}
+          title={`${block.name} — ${editing} condition (${block[editing + "Tf"]})`}
+          value={block[editing]} tokens={tokens}
+          onSave={(txt) => set(editing, txt)} onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }
 
-/* ── builder page ──────────────────────────────────────── */
+/* ── builder page (setup + blocks tabs + run bar) ──────── */
 
 export default function BuilderPage({
   t, tab, setTab,
@@ -393,8 +420,7 @@ export default function BuilderPage({
             ))}
 
             <p className={"text-xs px-1 " + t.muted}>
-              Define every indicator or price here first — they become the tappable
-              choices inside block entry/exit conditions.
+              Define every indicator or price here first — only then can it be used inside block entry/exit conditions.
             </p>
           </>
         )}
@@ -432,9 +458,9 @@ export default function BuilderPage({
         </button>
       </footer>
 
-      {/* setup add-sheets */}
+      {/* add sheets */}
       {sheet === "indicator" && <IndicatorSheet t={t} onAdd={(i) => setIndicators((s) => [...s, i])} onClose={() => setSheet(null)} />}
-      {sheet === "pattern" && <PatternListSheet t={t} onAdd={(i) => setIndicators((s) => [...s, i])} onClose={() => setSheet(null)} />}
+      {sheet === "pattern" && <PatternSheet t={t} onAdd={(i) => setIndicators((s) => [...s, i])} onClose={() => setSheet(null)} />}
       {sheet === "price" && <PriceSheet t={t} onAdd={(p) => setPrices((s) => [...s, p])} onClose={() => setSheet(null)} />}
     </>
   );

@@ -6,7 +6,7 @@ export const uid = () => ++_id;
 export const fmtInr = (v) =>
   (v < 0 ? "-" : "") + "₹" + Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
-/* ── display naming: "RSI (14, 5)" instead of rsi_14_5 ──── */
+/* ── display naming: "RSI (14, 5)" ─────────────────────── */
 
 export const tfNum = (tf) => tf.replace("m", "");
 
@@ -19,6 +19,99 @@ export const priceName = (field, tf, prev) =>
   `${prev ? "Prev " : ""}${field} (${tfNum(tf)})`;
 
 export const patternName = (name, tf) => `${name} (${tfNum(tf)})`;
+
+/* ══════════════════════════════════════════════════════════
+   CONDITION TREE MODEL
+   group:     { id, type:'group', children:[node], join? }
+   condition: { id, type:'cond', lhs, cmp, rhs, join? }
+   operand:   { kind:'token'|'number'|null, value }
+   `join` ('AND'|'OR') connects a node to the PREVIOUS sibling;
+   the first child of a group has no join.
+   A condition box = { mode:null|'pattern'|'manual',
+                       pattern:string|null, tree:group }
+   ══════════════════════════════════════════════════════════ */
+
+export const emptyTree = () => ({ id: uid(), type: "group", children: [] });
+
+export const newCondNode = (join) => ({
+  id: uid(), type: "cond", join,
+  lhs: { kind: null, value: "" }, cmp: ">", rhs: { kind: null, value: "" },
+});
+
+export const newGroupNode = (join) => ({
+  id: uid(), type: "group", join, children: [newCondNode()],
+});
+
+/* immutable walk/update */
+export const mapTree = (node, fn) => {
+  const n = fn(node);
+  if (n.type === "group") return { ...n, children: n.children.map((c) => mapTree(c, fn)) };
+  return n;
+};
+
+export const removeById = (node, id) => {
+  if (node.type !== "group") return node;
+  const children = node.children
+    .filter((c) => c.id !== id)
+    .map((c) => removeById(c, id))
+    .map((c, i) => (i === 0 ? { ...c, join: undefined } : { ...c, join: c.join || "AND" }));
+  return { ...node, children };
+};
+
+/* tree → text (this string is what the backend will receive
+   alongside the tree, and what ConfigSummary displays) */
+const opText = (o) => (o.kind ? String(o.value) : "…");
+
+export const treeToText = (node, isRoot = false) => {
+  if (node.type === "cond") return `${opText(node.lhs)} ${node.cmp} ${opText(node.rhs)}`;
+  const inner = node.children
+    .map((c, i) => (i === 0 ? "" : ` ${c.join} `) + treeToText(c))
+    .join("");
+  return isRoot ? inner : `(${inner})`;
+};
+
+export const boxText = (box) =>
+  box.mode === "pattern" ? (box.pattern || "") :
+  box.mode === "manual" ? treeToText(box.tree, true) : "";
+
+/* validation — returns [] when clean */
+export const validateTree = (node, errs = []) => {
+  if (node.type === "cond") {
+    if (!node.lhs.kind || !node.rhs.kind)
+      errs.push("a condition is missing an operand (tap the dotted chips)");
+    else if (node.lhs.kind === "number" && node.rhs.kind === "number")
+      errs.push(`"${opText(node.lhs)} ${node.cmp} ${opText(node.rhs)}" compares two plain numbers`);
+  } else {
+    if (node.children.length === 0) errs.push("a group is empty — add a condition or remove it");
+    node.children.forEach((c) => validateTree(c, errs));
+  }
+  return errs;
+};
+
+export const validateBox = (box) => {
+  if (box.mode === "pattern") return box.pattern ? [] : ["no pattern selected"];
+  if (box.mode === "manual") {
+    if (!box.tree.children.length) return []; // empty manual = always true
+    return validateTree(box.tree);
+  }
+  return []; // empty box = always true
+};
+
+/* quick constructors for seed data */
+const opnd = (v) =>
+  typeof v === "number" || /^[\d.:]+$/.test(String(v))
+    ? { kind: "number", value: String(v) }
+    : { kind: "token", value: v };
+const cnd = (l, c, r, join) =>
+  ({ id: uid(), type: "cond", join, lhs: opnd(l), cmp: c, rhs: opnd(r) });
+const grp = (join, ...children) => ({ id: uid(), type: "group", join, children });
+const tre = (...children) => ({ id: uid(), type: "group", children });
+
+export const mk = { opnd, cnd, grp, tre };
+
+const manualBox = (tree) => ({ mode: "manual", pattern: null, tree });
+const patternBox = (p) => ({ mode: "pattern", pattern: p, tree: emptyTree() });
+const emptyBox = () => ({ mode: null, pattern: null, tree: emptyTree() });
 
 /* ── builder defaults ─────────────────────────────────── */
 
@@ -34,13 +127,19 @@ export const newPosition = (n) => ({
   reSlType: "NONE", reSlCount: 0, reTgtType: "NONE", reTgtCount: 0,
 });
 
-export const newBlock = (n) => ({
-  id: uid(), name: `Block ${String(n).padStart(2, "0")}`, open: true,
-  entry: "", exit: "", entryTf: "5m", exitTf: "5m",
-  positions: [newPosition(1)],
-});
+export const newBlock = (n, entryBox, exitBox) => {
+  const eb = entryBox || emptyBox();
+  const xb = exitBox || emptyBox();
+  return {
+    id: uid(), name: `Block ${String(n).padStart(2, "0")}`, open: true,
+    entryTf: "5m", exitTf: "5m",
+    entryBox: eb, exitBox: xb,
+    entry: boxText(eb), exit: boxText(xb),
+    positions: [newPosition(1)],
+  };
+};
 
-/* one-line human summary of a position, used in config views */
+/* one-line human summary of a position */
 export const positionSummary = (p) => {
   const strike =
     p.strikeMode === "CLOSEST PREMIUM" ? `≈₹${p.premium} premium` :
@@ -128,10 +227,10 @@ export const computeResult = (trades) => {
   };
 };
 
-/* ── seed strategies for the home page ─────────────────── */
+/* ── seed strategies (conditions built as real trees) ──── */
 
-const mkStrategy = (name, status, entry, exit, tokens, positions, extras = {}) => {
-  const block = { ...newBlock(1), entry, exit, positions };
+const mkStrategy = (name, status, entryBox, exitBox, tokens, positions, extras = {}) => {
+  const block = { ...newBlock(1, entryBox, exitBox), positions };
   return {
     id: uid(), name, status, index: "NIFTY",
     blocks: [block],
@@ -145,16 +244,22 @@ const mkStrategy = (name, status, entry, exit, tokens, positions, extras = {}) =
 export const seedStrategies = () => [
   mkStrategy(
     "RSI Momentum", "LIVE",
-    "RSI (14, 5) > 60 AND Close (5) > EMA (20, 5)",
-    "RSI (14, 5) < 50",
+    manualBox(tre(
+      cnd("RSI (14, 5)", ">", 60),
+      cnd("Close (5)", ">", "EMA (20, 5)", "AND"),
+    )),
+    manualBox(tre(cnd("RSI (14, 5)", "<", 50))),
     ["RSI (14, 5)", "EMA (20, 5)", "Close (5)"],
     [{ ...newPosition(1), side: "BUY", optionType: "CE" }],
     { pnl: 48210.5, updated: "2026-07-14" }
   ),
   mkStrategy(
     "Morning ORB", "LIVE",
-    "current_time >= 09:45 AND Close (5) > Prev High (15)",
-    "current_time >= 15:00",
+    manualBox(tre(
+      cnd("current_time", ">=", "09:45"),
+      cnd("Close (5)", ">", "Prev High (15)", "AND"),
+    )),
+    manualBox(tre(cnd("current_time", ">=", "15:00"))),
     ["Close (5)", "Prev High (15)", "current_time"],
     [
       { ...newPosition(1), side: "SELL", optionType: "PE", strikeMode: "CLOSEST PREMIUM", premium: 180 },
@@ -164,25 +269,33 @@ export const seedStrategies = () => [
   ),
   mkStrategy(
     "EMA Cross Scalp", "PAUSED",
-    "EMA (9, 3) > EMA (21, 3)",
-    "EMA (9, 3) < EMA (21, 3)",
+    manualBox(tre(cnd("EMA (9, 3)", ">", "EMA (21, 3)"))),
+    manualBox(tre(cnd("EMA (9, 3)", "<", "EMA (21, 3)"))),
     ["EMA (9, 3)", "EMA (21, 3)"],
     [{ ...newPosition(1), side: "BUY", optionType: "FUT", targetType: "POINT", targetValue: 40, slType: "POINT", slValue: 20 }],
     { pnl: -3120.75, updated: "2026-06-30" }
   ),
   mkStrategy(
     "Supertrend Swing", "DRAFT",
-    "Supertrend (15) > 0 AND RSI (14, 15) > 55",
-    "",
-    ["Supertrend (15)", "RSI (14, 15)"],
+    manualBox(tre(
+      grp(undefined,
+        cnd("Supertrend (15)", ">", 0),
+        cnd("RSI (14, 15)", ">", 55, "AND"),
+      ),
+      grp("OR",
+        cnd("Close (15)", ">", "Prev High (15)"),
+      ),
+    )),
+    null,
+    ["Supertrend (15)", "RSI (14, 15)", "Close (15)", "Prev High (15)"],
     [{ ...newPosition(1), side: "BUY", optionType: "CE", expiry: "MONTHLY", strikeMode: "ITM", strikeStep: 2 }],
     { updated: "2026-07-08" }
   ),
   mkStrategy(
     "Doji Reversal", "DRAFT",
-    "Doji (5) AND Close (5) < EMA (50, 5)",
-    "RSI (14, 5) > 65",
-    ["Doji (5)", "Close (5)", "EMA (50, 5)", "RSI (14, 5)"],
+    patternBox("Doji (5)"),
+    manualBox(tre(cnd("RSI (14, 5)", ">", 65))),
+    ["RSI (14, 5)"],
     [{ ...newPosition(1), side: "BUY", optionType: "PE", trailOn: true }],
     { updated: "2026-07-01" }
   ),

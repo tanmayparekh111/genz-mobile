@@ -1,9 +1,9 @@
 import { useState, useRef } from "react";
-import { Save, Check, ArrowLeft, Palette, Play, Calendar, AlertCircle } from "lucide-react";
+import { Save, Check, ArrowLeft, Palette, Play, Calendar } from "lucide-react";
 import { THEMES } from "./genz/theme";
 import { Field, Sheet, StatusChip } from "./genz/ui";
 import {
-  uid, newBlock, seedStrategies, DUMMY_TRADES, mk, validateBox,
+  uid, newBlock, seedStrategies, DUMMY_TRADES,
 } from "./genz/data";
 import ConfigSummary from "./genz/ConfigSummary";
 import BuilderPage from "./genz/BuilderPage";
@@ -37,31 +37,6 @@ function RunSheet({ t, globals, setG, blocks, tokens, onRun, onClose }) {
   );
 }
 
-/* the default block a fresh strategy starts with */
-const demoBlock = () => {
-  const b = newBlock(1, {
-    mode: "manual", pattern: null,
-    tree: mk.tre(
-      mk.cnd("RSI (14, 5)", ">", 60),
-      mk.cnd("Close (5)", ">", "EMA (20, 5)", "AND"),
-    ),
-  }, {
-    mode: "manual", pattern: null,
-    tree: mk.tre(mk.cnd("RSI (14, 5)", "<", 50)),
-  });
-  return b;
-};
-
-/* collect validation problems across all blocks */
-const validateBlocks = (blocks) => {
-  const out = [];
-  blocks.forEach((b) => {
-    validateBox(b.entryBox).forEach((e) => out.push(`${b.name} · entry: ${e}`));
-    validateBox(b.exitBox).forEach((e) => out.push(`${b.name} · exit: ${e}`));
-  });
-  return out;
-};
-
 export default function StrategyBuilder() {
   const [themeKey, setThemeKey] = useState("kite");
   const t = THEMES[themeKey];
@@ -83,9 +58,10 @@ export default function StrategyBuilder() {
     { id: uid(), name: "Close (5)", field: "Close", tf: "5m" },
     { id: uid(), name: "Open (5)", field: "Open", tf: "5m" },
   ]);
-  const [blocks, setBlocks] = useState([demoBlock()]);
+  const [blocks, setBlocks] = useState([
+    { ...newBlock(1), entry: "RSI (14, 5) > 60 AND Close (5) > EMA (20, 5)", exit: "RSI (14, 5) < 50" },
+  ]);
   const [saved, setSaved] = useState(false);
-  const [saveErrors, setSaveErrors] = useState([]);
 
   /* run / results state */
   const [globals, setGlobals] = useState({
@@ -113,7 +89,6 @@ export default function StrategyBuilder() {
     setPrices([{ id: uid(), name: "Close (5)", field: "Close", tf: "5m" }]);
     setBlocks([newBlock(1)]);
     setSaved(false);
-    setSaveErrors([]);
     setTab("setup");
     setPage("builder");
   };
@@ -126,16 +101,11 @@ export default function StrategyBuilder() {
     if (s.indicators) setIndicators(structuredClone(s.indicators));
     if (s.prices) setPrices(structuredClone(s.prices));
     setSaved(true);
-    setSaveErrors([]);
     setTab("blocks");
     setPage("builder");
   };
 
   const saveStrategy = () => {
-    const errors = validateBlocks(blocks);
-    setSaveErrors(errors);
-    if (errors.length) { setSaved(false); return; }
-
     setSaved(true);
     setStrategies((list) => {
       const payload = {
@@ -153,14 +123,6 @@ export default function StrategyBuilder() {
   };
 
   const runBacktest = () => {
-    const errors = validateBlocks(blocks);
-    if (errors.length) {
-      setRunSheet(false);
-      setSaveErrors(errors);
-      setStatus({ state: "ready", msg: "Fix condition issues before running" });
-      return;
-    }
-    setSaveErrors([]);
     setRunSheet(false);
     setStatus({ state: "queued", msg: "Queued on worker…" });
     const nPos = blocks.reduce((a, b) => a + b.positions.length, 0);
@@ -180,6 +142,7 @@ export default function StrategyBuilder() {
     setPage("results");
   };
 
+  /* ── header title per page ── */
   const editingStrategy = strategies.find((s) => s.id === editingId);
 
   return (
@@ -233,20 +196,6 @@ export default function StrategyBuilder() {
               <h1 className="text-xl font-semibold flex-1 truncate">{resultCtx?.name} — results</h1>
             )}
           </div>
-
-          {/* save-time validation banner */}
-          {page === "builder" && saveErrors.length > 0 && (
-            <div className="mt-2 rounded-xl bg-red-500/10 border border-red-300 p-2.5 space-y-1">
-              {saveErrors.slice(0, 4).map((e, i) => (
-                <p key={i} className="text-xs text-red-500 flex items-start gap-1.5">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0" /> {e}
-                </p>
-              ))}
-              {saveErrors.length > 4 && (
-                <p className="text-xs text-red-400">…and {saveErrors.length - 4} more</p>
-              )}
-            </div>
-          )}
         </header>
 
         {page === "home" && (
