@@ -1,0 +1,14 @@
+{
+  "name": "GenZ Backtest",
+  "short_name": "GenZ",
+  "description": "Strategy builder & backtesting",
+  "start_url": "/genz-mobile/",
+  "scope": "/genz-mobile/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/genz-mobile/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/genz-mobile/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
