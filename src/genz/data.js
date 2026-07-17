@@ -300,3 +300,133 @@ export const seedStrategies = () => [
     { updated: "2026-07-01" }
   ),
 ];
+
+/* ══════════════════════════════════════════════════════════
+   MARKETPLACE DUMMY DATA
+   ══════════════════════════════════════════════════════════ */
+
+export const INDIA_INDICES = [
+  { name: "NIFTY 50", price: "24,812.30", chg: +0.62 },
+  { name: "BANKNIFTY", price: "52,140.85", chg: -0.28 },
+  { name: "FINNIFTY", price: "23,905.10", chg: +0.41 },
+  { name: "SENSEX", price: "81,455.70", chg: +0.55 },
+  { name: "MIDCAP 100", price: "57,230.45", chg: +1.12 },
+  { name: "INDIA VIX", price: "13.42", chg: -3.85 },
+];
+
+export const GLOBAL_INDICES = [
+  { name: "DOW JONES", price: "44,910.20", chg: +0.34 },
+  { name: "S&P 500", price: "6,412.55", chg: +0.48 },
+  { name: "NASDAQ", price: "21,880.10", chg: +0.91 },
+  { name: "FTSE 100", price: "8,610.40", chg: -0.12 },
+  { name: "NIKKEI 225", price: "41,220.75", chg: +1.05 },
+  { name: "HANG SENG", price: "19,480.30", chg: -0.74 },
+];
+
+export const NIFTY_PULLERS = [
+  { sym: "RELIANCE", chg: +2.14 }, { sym: "HDFCBANK", chg: +1.62 },
+  { sym: "INFY", chg: +1.38 }, { sym: "TCS", chg: +0.95 },
+];
+export const NIFTY_DRAGGERS = [
+  { sym: "ADANIENT", chg: -2.35 }, { sym: "TATAMOTORS", chg: -1.71 },
+  { sym: "SBIN", chg: -1.12 }, { sym: "ITC", chg: -0.66 },
+];
+
+export const MARKET_NEWS = [
+  {
+    id: 1, time: "09:42",
+    title: "RBI holds repo rate at 6.25%, keeps stance neutral",
+    src: "Market Desk",
+    body: "Rate-sensitive banking and realty stocks trade mixed after the policy announcement.",
+  },
+  {
+    id: 2, time: "10:15",
+    title: "IT stocks rally as US tech earnings beat estimates",
+    src: "Global Wire",
+    body: "INFY and TCS lead the NIFTY IT index up 1.8% in morning trade.",
+  },
+  {
+    id: 3, time: "11:03",
+    title: "Crude slips below $78; OMCs gain up to 2%",
+    src: "Commodities",
+    body: "Softer crude supports HPCL, BPCL and IOC; aviation stocks also tick higher.",
+  },
+];
+
+/* strategies visible on the marketplace: featured (by GenZ) + community */
+const mktStrategy = (name, author, desc, tagsList, blocks, tokens, extras = {}) => ({
+  id: uid(), name, author, desc, tagsList,
+  blocks, tokens,
+  subs: extras.subs ?? 0,
+  ret: extras.ret ?? 0, // 6-month return %
+  featured: extras.featured ?? false,
+});
+
+const straddlePositions = () => [
+  { ...newPosition(1), side: "SELL", optionType: "CE", strikeMode: "ATM" },
+  { ...newPosition(2), side: "SELL", optionType: "PE", strikeMode: "ATM" },
+];
+const stranglePositions = () => [
+  { ...newPosition(1), side: "SELL", optionType: "CE", strikeMode: "CLOSEST PREMIUM", premium: 120 },
+  { ...newPosition(2), side: "SELL", optionType: "PE", strikeMode: "CLOSEST PREMIUM", premium: 120 },
+];
+
+export const marketplaceSeeds = () => [
+  mktStrategy(
+    "9:20 Short Straddle", "GenZ Official",
+    "Classic intraday straddle: sell ATM CE + PE at 9:20 with 25% SL each leg.",
+    ["Straddle", "Intraday"],
+    [{ ...newBlock(1,
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("current_time", ">=", "09:20")) },
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("current_time", ">=", "15:10")) }),
+      positions: straddlePositions() }],
+    ["current_time"],
+    { subs: 1240, ret: 18.4, featured: true }
+  ),
+  mktStrategy(
+    "Wide Short Strangle", "GenZ Official",
+    "Sell ~₹120 premium strangle both sides; time exit, no re-entry.",
+    ["Strangle", "Intraday"],
+    [{ ...newBlock(1,
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("current_time", ">=", "09:30")) },
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("current_time", ">=", "15:00")) }),
+      positions: stranglePositions() }],
+    ["current_time"],
+    { subs: 862, ret: 12.7, featured: true }
+  ),
+  mktStrategy(
+    "RSI Momentum Buyer", "GenZ Official",
+    "Buys CE when RSI(14,5) crosses 60 with price above EMA(20,5).",
+    ["Indicator", "Momentum"],
+    [{ ...newBlock(1,
+        { mode: "manual", pattern: null,
+          tree: mk.tre(mk.cnd("RSI (14, 5)", ">", 60), mk.cnd("Close (5)", ">", "EMA (20, 5)", "AND")) },
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("RSI (14, 5)", "<", 50)) }),
+      positions: [{ ...newPosition(1), side: "BUY", optionType: "CE" }] }],
+    ["RSI (14, 5)", "EMA (20, 5)", "Close (5)"],
+    { subs: 510, ret: 22.1, featured: true }
+  ),
+  mktStrategy(
+    "Expiry Theta Crush", "Ravi Sharma",
+    "Sells far OTM strangle only on expiry day afternoons.",
+    ["Strangle", "Expiry"],
+    [{ ...newBlock(1,
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("current_time", ">=", "13:00")) },
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("current_time", ">=", "15:15")) }),
+      positions: stranglePositions() }],
+    ["current_time"],
+    { subs: 318, ret: 9.6 }
+  ),
+  mktStrategy(
+    "Supertrend Rider", "Priya K",
+    "Rides 15-min Supertrend flips with trailing stop loss.",
+    ["Indicator", "Trend"],
+    [{ ...newBlock(1,
+        { mode: "manual", pattern: null,
+          tree: mk.tre(mk.cnd("Supertrend (15)", ">", 0), mk.cnd("RSI (14, 15)", ">", 55, "AND")) },
+        { mode: "manual", pattern: null, tree: mk.tre(mk.cnd("Supertrend (15)", "<", 0)) }),
+      positions: [{ ...newPosition(1), side: "BUY", optionType: "FUT", trailOn: true }] }],
+    ["Supertrend (15)", "RSI (14, 15)"],
+    { subs: 204, ret: 15.3 }
+  ),
+];

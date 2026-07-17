@@ -1,17 +1,21 @@
 import { useState, useRef } from "react";
-import { Save, Check, ArrowLeft, Palette, Play, Calendar, AlertCircle } from "lucide-react";
-import { THEMES } from "./genz/theme";
-import { Field, Sheet, StatusChip } from "./genz/ui";
 import {
-  uid, newBlock, seedStrategies, DUMMY_TRADES, mk, validateBox,
+  Save, Check, ArrowLeft, Palette, Play, Calendar, AlertCircle,
+  Store, Layers, FlaskConical,
+} from "lucide-react";
+import { THEMES } from "./genz/theme";
+import { Field, Sheet, StatusChip, Toast } from "./genz/ui";
+import {
+  uid, newBlock, seedStrategies, DUMMY_TRADES, mk, validateBox, marketplaceSeeds,
 } from "./genz/data";
 import ConfigSummary from "./genz/ConfigSummary";
 import BuilderPage from "./genz/BuilderPage";
 import ResultsPage from "./genz/ResultsPage";
 import StrategiesPage from "./genz/StrategiesPage";
+import MarketplacePage from "./genz/MarketplacePage";
+import PapertradePage from "./genz/PapertradePage";
 
-/* Run sheet: dates & times + the strategy's full config below,
-   so the user reviews exactly what is about to run. */
+/* Run sheet: dates & times + the strategy's full config below */
 function RunSheet({ t, globals, setG, blocks, tokens, onRun, onClose }) {
   return (
     <Sheet t={t} title="Run backtest" onClose={onClose}>
@@ -38,21 +42,17 @@ function RunSheet({ t, globals, setG, blocks, tokens, onRun, onClose }) {
 }
 
 /* the default block a fresh strategy starts with */
-const demoBlock = () => {
-  const b = newBlock(1, {
-    mode: "manual", pattern: null,
-    tree: mk.tre(
-      mk.cnd("RSI (14, 5)", ">", 60),
-      mk.cnd("Close (5)", ">", "EMA (20, 5)", "AND"),
-    ),
-  }, {
-    mode: "manual", pattern: null,
-    tree: mk.tre(mk.cnd("RSI (14, 5)", "<", 50)),
-  });
-  return b;
-};
+const demoBlock = () => newBlock(1, {
+  mode: "manual", pattern: null,
+  tree: mk.tre(
+    mk.cnd("RSI (14, 5)", ">", 60),
+    mk.cnd("Close (5)", ">", "EMA (20, 5)", "AND"),
+  ),
+}, {
+  mode: "manual", pattern: null,
+  tree: mk.tre(mk.cnd("RSI (14, 5)", "<", 50)),
+});
 
-/* collect validation problems across all blocks */
 const validateBlocks = (blocks) => {
   const out = [];
   blocks.forEach((b) => {
@@ -62,13 +62,30 @@ const validateBlocks = (blocks) => {
   return out;
 };
 
+const NAV = [
+  ["market", "Market", Store],
+  ["home", "Strategies", Layers],
+  ["paper", "Papertrade", FlaskConical],
+];
+
 export default function StrategyBuilder() {
   const [themeKey, setThemeKey] = useState("kite");
   const t = THEMES[themeKey];
 
-  /* pages: home (strategy list) | builder | results */
+  /* pages: market | home | paper | builder | results */
   const [page, setPage] = useState("home");
   const [strategies, setStrategies] = useState(seedStrategies);
+  const [market, setMarket] = useState(marketplaceSeeds);
+  const [subscribedIds, setSubscribedIds] = useState(new Set());
+
+  /* toast */
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  const notify = (msg) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  };
 
   /* builder state */
   const [editingId, setEditingId] = useState(null);
@@ -95,13 +112,56 @@ export default function StrategyBuilder() {
   const setG = (k, v) => setGlobals((g) => ({ ...g, [k]: v }));
   const [status, setStatus] = useState({ state: "ready", msg: "Ready to run backtest" });
   const [runSheet, setRunSheet] = useState(false);
-  const [resultCtx, setResultCtx] = useState(null); // { name, showRerun }
+  const [resultCtx, setResultCtx] = useState(null);
   const timers = useRef([]);
 
   const tokens = [...indicators.map((i) => i.name), ...prices.map((p) => p.name), "current_time"];
 
-  /* ── actions ── */
+  /* ── strategy status/flag actions (⋮ menus) ── */
+  const patchStrategy = (id, patch) =>
+    setStrategies((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
+  const actions = {
+    pause: (s) => { patchStrategy(s.id, { status: "PAUSED", paperRunning: false }); notify(`"${s.name}" paused`); },
+    goLive: (s) => { patchStrategy(s.id, { status: "LIVE" }); notify(`"${s.name}" is now LIVE`); },
+    toggleWatchlist: (s) => {
+      patchStrategy(s.id, { watchlist: !s.watchlist, paperRunning: false });
+      notify(s.watchlist
+        ? `"${s.name}" removed from watchlist`
+        : `"${s.name}" added to watchlist — see Papertrade tab`);
+    },
+    publish: (s) => {
+      patchStrategy(s.id, { published: true });
+      setMarket((m) => [...m, {
+        id: uid(), name: s.name, author: "You", desc: `Published from My Strategies.`,
+        tagsList: ["Community"], blocks: structuredClone(s.blocks), tokens: s.tokens || [],
+        subs: 0, ret: 0, featured: false,
+      }]);
+      notify(`"${s.name}" published to Marketplace`);
+    },
+    remove: (s) => {
+      setStrategies((list) => list.filter((x) => x.id !== s.id));
+      notify(`"${s.name}" deleted`);
+    },
+  };
+
+  const togglePaper = (s) => {
+    patchStrategy(s.id, { paperRunning: !s.paperRunning });
+    notify(s.paperRunning ? `Papertrade stopped for "${s.name}"` : `Papertrade started for "${s.name}"`);
+  };
+
+  const subscribe = (m) => {
+    setSubscribedIds((set) => new Set(set).add(m.id));
+    setStrategies((list) => [{
+      id: uid(), name: m.name, status: "DRAFT", index: "NIFTY",
+      blocks: structuredClone(m.blocks), tokens: m.tokens || [],
+      updated: "2026-07-17", pnl: null,
+      subscribed: true, watchlist: false, published: false,
+    }, ...list]);
+    notify(`"${m.name}" added to My Strategies — run it from there if you want`);
+  };
+
+  /* ── builder actions ── */
   const openNewStrategy = () => {
     setEditingId(null);
     setName(`My Strategy ${String(strategies.length + 1).padStart(2, "0")}`);
@@ -112,9 +172,7 @@ export default function StrategyBuilder() {
     ]);
     setPrices([{ id: uid(), name: "Close (5)", field: "Close", tf: "5m" }]);
     setBlocks([newBlock(1)]);
-    setSaved(false);
-    setSaveErrors([]);
-    setTab("setup");
+    setSaved(false); setSaveErrors([]); setTab("setup");
     setPage("builder");
   };
 
@@ -125,9 +183,7 @@ export default function StrategyBuilder() {
     setBlocks(structuredClone(s.blocks));
     if (s.indicators) setIndicators(structuredClone(s.indicators));
     if (s.prices) setPrices(structuredClone(s.prices));
-    setSaved(true);
-    setSaveErrors([]);
-    setTab("blocks");
+    setSaved(true); setSaveErrors([]); setTab("blocks");
     setPage("builder");
   };
 
@@ -141,27 +197,24 @@ export default function StrategyBuilder() {
       const payload = {
         name, index, blocks: structuredClone(blocks),
         indicators: structuredClone(indicators), prices: structuredClone(prices),
-        tokens, updated: "2026-07-15",
+        tokens, updated: "2026-07-17",
       };
-      if (editingId) {
-        return list.map((s) => (s.id === editingId ? { ...s, ...payload } : s));
-      }
+      if (editingId) return list.map((s) => (s.id === editingId ? { ...s, ...payload } : s));
       const id = uid();
       setEditingId(id);
-      return [{ id, status: "DRAFT", pnl: null, ...payload }, ...list];
+      return [{ id, status: "DRAFT", pnl: null, subscribed: false, watchlist: false, published: false, ...payload }, ...list];
     });
+    notify("Strategy saved");
   };
 
   const runBacktest = () => {
     const errors = validateBlocks(blocks);
     if (errors.length) {
-      setRunSheet(false);
-      setSaveErrors(errors);
+      setRunSheet(false); setSaveErrors(errors);
       setStatus({ state: "ready", msg: "Fix condition issues before running" });
       return;
     }
-    setSaveErrors([]);
-    setRunSheet(false);
+    setSaveErrors([]); setRunSheet(false);
     setStatus({ state: "queued", msg: "Queued on worker…" });
     const nPos = blocks.reduce((a, b) => a + b.positions.length, 0);
     timers.current.forEach(clearTimeout);
@@ -181,10 +234,17 @@ export default function StrategyBuilder() {
   };
 
   const editingStrategy = strategies.find((s) => s.id === editingId);
+  const isMainPage = ["market", "home", "paper"].includes(page);
+  const pageTitle =
+    page === "market" ? "Marketplace" :
+    page === "home" ? "My strategies" :
+    page === "paper" ? "Papertrade" : "";
 
   return (
     <div className={"min-h-screen flex justify-center " + t.app} style={{ fontFamily: t.font }}>
       <div className={"w-full max-w-md flex flex-col min-h-screen " + t.shell}>
+
+        <Toast t={t} toast={toast} />
 
         <header className={"px-4 pt-4 pb-3 sticky top-0 backdrop-blur z-10 " + t.header}>
           <div className="flex items-center justify-between">
@@ -207,14 +267,14 @@ export default function StrategyBuilder() {
           </div>
 
           <div className="flex items-center gap-2 mt-2">
-            {page !== "home" && (
+            {!isMainPage && (
               <button onClick={() => setPage(page === "results" && resultCtx?.showRerun ? "builder" : "home")}
                 className={"p-1 " + t.linkAccent}>
                 <ArrowLeft size={20} />
               </button>
             )}
 
-            {page === "home" && <h1 className="text-xl font-semibold flex-1">My strategies</h1>}
+            {isMainPage && <h1 className="text-xl font-semibold flex-1">{pageTitle}</h1>}
 
             {page === "builder" && (
               <>
@@ -234,7 +294,6 @@ export default function StrategyBuilder() {
             )}
           </div>
 
-          {/* save-time validation banner */}
           {page === "builder" && saveErrors.length > 0 && (
             <div className="mt-2 rounded-xl bg-red-500/10 border border-red-300 p-2.5 space-y-1">
               {saveErrors.slice(0, 4).map((e, i) => (
@@ -249,9 +308,22 @@ export default function StrategyBuilder() {
           )}
         </header>
 
+        {page === "market" && (
+          <MarketplacePage t={t} market={market}
+            onSubscribe={subscribe} subscribedIds={subscribedIds} />
+        )}
+
         {page === "home" && (
           <StrategiesPage t={t} strategies={strategies}
-            onOpen={openStrategyResults} onEdit={openEditStrategy} onNew={openNewStrategy} />
+            onOpen={openStrategyResults} onEdit={openEditStrategy}
+            onNew={openNewStrategy} actions={actions} />
+        )}
+
+        {page === "paper" && (
+          <PapertradePage t={t} strategies={strategies}
+            onTogglePaper={togglePaper}
+            onGoLive={actions.goLive}
+            onRemove={actions.toggleWatchlist} />
         )}
 
         {page === "builder" && (
@@ -269,6 +341,20 @@ export default function StrategyBuilder() {
             onBack={() => setPage(resultCtx.showRerun ? "builder" : "home")}
             onRerun={() => setRunSheet(true)}
             showRerun={resultCtx.showRerun} />
+        )}
+
+        {/* bottom navigation — main pages only */}
+        {isMainPage && (
+          <nav className={"fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md backdrop-blur flex " + t.footer}>
+            {NAV.map(([id, label, Icon]) => (
+              <button key={id} onClick={() => setPage(id)}
+                className={"flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors " +
+                  (page === id ? t.linkAccent : t.muted)}>
+                <Icon size={20} strokeWidth={page === id ? 2.4 : 1.8} />
+                {label}
+              </button>
+            ))}
+          </nav>
         )}
 
         {runSheet && (

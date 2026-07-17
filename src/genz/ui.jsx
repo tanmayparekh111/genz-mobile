@@ -116,3 +116,50 @@ export const StatusChip = ({ t, status }) => {
     </span>
   );
 };
+
+/* small labelled tag chip (SUBSCRIBED / WATCHLIST / PUBLISHED …) */
+export const Tag = ({ t, children, tone = "default" }) => {
+  const tones = {
+    default: t.chipDraft,
+    accent: t.token,
+    green: t.chipLive,
+    amber: t.chipPaused,
+  };
+  return (
+    <span className={"inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded " + tones[tone]}>
+      {children}
+    </span>
+  );
+};
+
+/* bottom action sheet for ⋮ menus: items = [{icon, label, onClick, danger, disabled}] */
+export function ActionSheet({ t, title, items, onClose }) {
+  return (
+    <Sheet t={t} title={title} onClose={onClose}>
+      <div className="space-y-1.5">
+        {items.map(({ icon: Icon, label, onClick, danger, disabled }) => (
+          <button key={label} disabled={disabled}
+            onClick={() => { onClose(); onClick && onClick(); }}
+            className={"w-full flex items-center gap-3 px-3 py-3 text-left text-sm " +
+              t.rowItem + " " +
+              (disabled ? "opacity-40" : danger ? "text-red-500" : "")}>
+            {Icon && <Icon size={17} className={danger ? "text-red-400" : t.muted} />}
+            <span className="font-medium">{label}</span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+
+/* auto-dismissing toast, rendered by the app shell */
+export function Toast({ t, toast }) {
+  if (!toast) return null;
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm">
+      <div className={"px-4 py-3 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2 " + t.banner}>
+        <span className="flex-1">{toast}</span>
+      </div>
+    </div>
+  );
+}
