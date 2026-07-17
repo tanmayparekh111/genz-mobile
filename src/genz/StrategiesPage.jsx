@@ -3,8 +3,8 @@ import {
   Plus, Info, ChevronRight, Pencil, MoreVertical,
   Pause, Radio, FlaskConical, Store, Trash2,
 } from "lucide-react";
-import { Sheet, StatusChip, Tag, ActionSheet } from "./ui";
-import { fmtInr } from "./data";
+import { Sheet, StatusChip, Tag, ActionSheet, OpenPositions } from "./ui";
+import { fmtInr, openPositionsFor } from "./data";
 import ConfigSummary from "./ConfigSummary";
 
 const FILTERS = ["ALL", "LIVE", "PAUSED", "DRAFT"];
@@ -86,6 +86,9 @@ export default function StrategiesPage({ t, strategies, onOpen, onEdit, onNew, a
                     {s.pnl >= 0 ? "▲ " : "▼ "}{fmtInr(s.pnl)}
                     <span className={"font-normal text-xs ml-1 " + t.muted}>total PnL</span>
                   </p>
+                )}
+                {s.status === "LIVE" && (
+                  <OpenPositions t={t} positions={openPositionsFor(s)} />
                 )}
               </button>
               <button onClick={() => setMenuFor(s)} className={"p-1.5 rounded-lg " + t.ghostBtn}>

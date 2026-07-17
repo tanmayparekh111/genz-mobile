@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import {
   MoreVertical, Play, Square, Radio, Trash2, FlaskConical, Info,
 } from "lucide-react";
-import { ActionSheet, Sheet, StatusChip, Tag } from "./ui";
-import { fmtInr } from "./data";
+import { ActionSheet, Sheet, StatusChip, Tag, OpenPositions } from "./ui";
+import { fmtInr, openPositionsFor } from "./data";
 import ConfigSummary from "./ConfigSummary";
 
 /* fake live PnL that drifts while papertrade is running */
@@ -63,6 +63,8 @@ function PaperCard({ t, s, onTogglePaper, onGoLive, onRemove }) {
           </>
         )}
       </div>
+
+      {s.paperRunning && <OpenPositions t={t} positions={openPositionsFor(s)} />}
 
       {menu && (
         <ActionSheet t={t} title={s.name} onClose={() => setMenu(false)}

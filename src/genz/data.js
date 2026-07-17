@@ -430,3 +430,26 @@ export const marketplaceSeeds = () => [
     { subs: 204, ret: 15.3 }
   ),
 ];
+
+/* dummy "open positions today" for LIVE / papertrading strategies —
+   deterministic per strategy so it doesn't change on re-render */
+export const openPositionsFor = (s) => {
+  const seed = (s.id * 2654435761) >>> 0;
+  const n = 1 + (seed % 3); // 1..3 open positions
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const k = (seed >> (i * 5)) >>> 0;
+    const strike = 24700 + (k % 8) * 50;
+    const side = k % 3 === 0 ? "BUY" : "SELL";
+    const type = k % 2 ? "CE" : "PE";
+    const pnl = +(((k % 900) - 320) * 1.7).toFixed(2);
+    out.push({
+      id: i,
+      sym: `NIFTY 17JUL ${strike} ${type}`,
+      side, qty: 65,
+      entry: +(140 + (k % 80)).toFixed(2),
+      pnl,
+    });
+  }
+  return out;
+};

@@ -163,3 +163,34 @@ export function Toast({ t, toast }) {
     </div>
   );
 }
+
+/* "Open positions today" strip for LIVE / papertrading cards */
+export function OpenPositions({ t, positions }) {
+  const total = positions.reduce((a, p) => a + p.pnl, 0);
+  return (
+    <div className={"mt-2.5 p-2.5 rounded-xl " + t.innerCard}>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className={t.sectionLabel}>Open positions today</p>
+        <span className={"text-xs font-semibold " + (total >= 0 ? "text-emerald-600" : "text-rose-500")}>
+          {positions.length} open · {total >= 0 ? "+" : ""}₹{Math.abs(total).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {positions.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 text-xs">
+            <span className={"px-1.5 py-0.5 rounded text-[10px] font-semibold " +
+              (p.side === "BUY" ? t.chipBuy : t.chipSell)}>
+              {p.side}
+            </span>
+            <span className={"flex-1 truncate " + t.body}>{p.sym}</span>
+            <span className={t.muted}>{p.qty} @ {p.entry}</span>
+            <span className={"font-semibold tabular-nums w-16 text-right " +
+              (p.pnl >= 0 ? "text-emerald-600" : "text-rose-500")}>
+              {p.pnl >= 0 ? "+" : ""}{p.pnl.toFixed(0)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
