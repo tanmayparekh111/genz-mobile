@@ -17,15 +17,18 @@ const menuItems = (s, act) => {
 
   items.push({
     icon: FlaskConical,
-    label: s.watchlist ? "Remove from watchlist" : "Add to watchlist",
+    label: s.watchlist ? "Remove from papertrade" : "Add to papertrade",
     onClick: () => act.toggleWatchlist(s),
   });
-  items.push({
-    icon: Store,
-    label: s.published ? "Published to marketplace" : "Publish to marketplace",
-    disabled: s.published,
-    onClick: () => act.publish(s),
-  });
+  /* subscribed (marketplace-origin) strategies can't be re-published */
+  if (!s.subscribed) {
+    items.push({
+      icon: Store,
+      label: s.published ? "Published to marketplace" : "Publish to marketplace",
+      disabled: s.published,
+      onClick: () => act.publish(s),
+    });
+  }
   items.push({ icon: Trash2, label: "Delete strategy", danger: true, onClick: () => act.remove(s) });
   return items;
 };
@@ -71,7 +74,7 @@ export default function StrategiesPage({ t, strategies, onOpen, onEdit, onNew, a
                 </div>
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   {s.subscribed && <Tag t={t} tone="green">SUBSCRIBED</Tag>}
-                  {s.watchlist && <Tag t={t} tone="accent">WATCHLIST</Tag>}
+                  {s.watchlist && <Tag t={t} tone="accent">PAPERTRADE</Tag>}
                   {s.published && <Tag t={t} tone="amber">PUBLISHED</Tag>}
                 </div>
                 <p className={"text-xs mt-1.5 " + t.muted}>
@@ -124,7 +127,7 @@ export default function StrategiesPage({ t, strategies, onOpen, onEdit, onNew, a
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <StatusChip t={t} status={details.status} />
             {details.subscribed && <Tag t={t} tone="green">SUBSCRIBED</Tag>}
-            {details.watchlist && <Tag t={t} tone="accent">WATCHLIST</Tag>}
+            {details.watchlist && <Tag t={t} tone="accent">PAPERTRADE</Tag>}
             {details.published && <Tag t={t} tone="amber">PUBLISHED</Tag>}
             <span className={"text-xs " + t.muted}>{details.index} · updated {details.updated}</span>
           </div>

@@ -72,7 +72,7 @@ function PaperCard({ t, s, onTogglePaper, onGoLive, onRemove }) {
               : { icon: Play, label: "Start papertrade", onClick: () => onTogglePaper(s) },
             { icon: Radio, label: "Go to live", disabled: s.status === "LIVE", onClick: () => onGoLive(s) },
             { icon: Info, label: "Details", onClick: () => setDetails(true) },
-            { icon: Trash2, label: "Remove from watchlist", danger: true, onClick: () => onRemove(s) },
+            { icon: Trash2, label: "Remove from papertrade", danger: true, onClick: () => onRemove(s) },
           ]} />
       )}
 
@@ -92,9 +92,9 @@ export default function PapertradePage({ t, strategies, onTogglePaper, onGoLive,
       {list.length === 0 && (
         <div className={"p-8 text-center " + t.card}>
           <FlaskConical size={28} className={"mx-auto mb-2 " + t.muted} />
-          <p className="text-sm font-medium">Nothing in your watchlist yet</p>
+          <p className="text-sm font-medium">Nothing in papertrade yet</p>
           <p className={"text-xs mt-1 " + t.muted}>
-            Add strategies here from My Strategies (⋮ → Add to watchlist)
+            Add strategies here from My Strategies (⋮ → Add to papertrade)
             or subscribe from the Marketplace.
           </p>
         </div>

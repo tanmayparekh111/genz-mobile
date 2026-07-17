@@ -127,8 +127,8 @@ export default function StrategyBuilder() {
     toggleWatchlist: (s) => {
       patchStrategy(s.id, { watchlist: !s.watchlist, paperRunning: false });
       notify(s.watchlist
-        ? `"${s.name}" removed from watchlist`
-        : `"${s.name}" added to watchlist — see Papertrade tab`);
+        ? `"${s.name}" removed from papertrade`
+        : `"${s.name}" added to papertrade — see Papertrade tab`);
     },
     publish: (s) => {
       patchStrategy(s.id, { published: true });
